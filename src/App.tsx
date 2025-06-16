@@ -1,31 +1,34 @@
 import "./App.css";
 import { useEffect } from "react";
-
+import { getCalApi } from "@calcom/embed-react";
 import React, { useState } from "react";
-const formId="56250726-d41d-4140-af43-551cac8892a5"
-const calOrigin="https://a7b1-2a01-4f8-212-75a-00-2.ngrok-free.app"
+const formId = "328d99d9-0a47-4bfc-99d2-a20d93ad1106"
+const calOrigin = "https://i.cal.qa"
+const embedJsUrl = "https://app.cal.qa/embed/embed.js"
+
+function useCalApi() {
+  const [cal, setCal] = useState<any>(null);
+  useEffect(() => {
+    (async function () {
+      const cal = await getCalApi({ embedJsUrl, namespace: "headl" })
+      setCal(() => cal)
+    })();
+  }, [embedJsUrl]);
+  return cal;
+}
+
 // This is same as you get from Embed Snippet Generator on Cal.com with the difference that it has props that can configure it from outside
 const EmbedCta = ({
+  cal,
   calLink,
   calOrigin,
   children,
 }: {
+  cal: any;
   calLink: string;
   calOrigin: string;
   children: React.ReactNode;
 }) => {
-  useEffect(() => {
-    (async function () {
-      window.Cal("ui", { hideEventTypeDetails: false, layout: "month_view" });
-      window.Cal("on", {
-        action: "bookingSuccessfulV2",
-        callback(event) {
-          let b = event.detail.data;
-          console.log(b);
-        },
-      });
-    })();
-  }, []);
 
   return (
     <button
@@ -39,9 +42,54 @@ const EmbedCta = ({
     </button>
   );
 };
+let connectStartedAt = 0;
+let connectCompletedAt = 0;
+
+function useCalculateTimeTakenToShowBookingPage(cal: any) {
+  useEffect(() => {
+    if (!cal) return;
+
+    function onConnectInitiated() {
+      connectStartedAt = Date.now();
+    }
+
+    function onConnectCompleted() {
+      connectCompletedAt = Date.now();
+      const connectionDuration = connectCompletedAt - connectStartedAt;
+      console.log('Time taken to show booking page: ', connectionDuration);
+    }
+
+    cal("on", {
+      action: "connectCompleted",
+      callback: onConnectCompleted
+    });
+    cal("on", {
+      action: "connectInitiated",
+      callback: onConnectInitiated
+    });
+
+    return () => {
+      cal("off", {
+        action: "__connectInitiated",
+        callback: onConnectInitiated
+      });
+      cal("off", {
+        action: "__connectCompleted",
+        callback: onConnectCompleted
+      });
+    }
+  }, [cal])
+}
 
 const App = () => {
-  const [formData, setFormData] = useState({
+  type FormData = {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    companySize: string;
+  }
+  const [formData, setFormData] = useState<FormData>({
     firstName: "",
     lastName: "",
     email: "",
@@ -49,19 +97,13 @@ const App = () => {
     companySize: "",
   });
 
-  const handleInputChange = (event) => {
-    const { name, value } = event.target;
-    setFormData({ ...formData, [name]: value });
-  };
+  const [routerUrl, setRouterUrl] = useState("");
 
-  const handleSubmit = (event) => {
-    // You can submit the data to your server as well or to any other third party here
-    console.log(formData);
-    // Ensure that form doesn't redirect to the action and instead lets us show the embed
-    return event.preventDefault();
-  };
 
-  const calLink = (() => {
+  const cal = useCalApi()
+  useCalculateTimeTakenToShowBookingPage(cal)
+
+  const buildRouterUrl = (formData: FormData) => {
     const searchParams = new URLSearchParams();
 
     // "firstName" and "lastName" are the identifier for the name field in Routing Form
@@ -73,30 +115,105 @@ const App = () => {
     searchParams.set("email", formData.email);
     // "companySize" is the identifier for the Company Size field in Routing Form
     // Encode if there are any special parameters e.g. companySize has 2000+ option where + is a special character
-    searchParams.set("companySize", encodeURIComponent(formData.companySize));
+    searchParams.set("companySize", formData.companySize);
 
-    return `router?form=${formId}&${searchParams.toString()}`;
-  })();
+    return `router?debug=true&form=${formId}&${searchParams.toString()}`;
+  }
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = event.target;
+    const newFormData = { ...formData, [name]: value };
+    setFormData(newFormData);
+    return newFormData;
+  };
+
+
+  function prerender(newFormData?: FormData) {
+    const formDataToUse = newFormData ?? formData;
+    const newRouterUrl = buildRouterUrl(formDataToUse);
+    const fieldsRequiredByRoutingRules = ['email', 'companySize']
+    const isRouterDataAvailable = () => {
+      return fieldsRequiredByRoutingRules.every(field => formDataToUse[field as keyof FormData])
+    }
+    const isRouterDataChanged = () => {
+      // Needed by URL()
+      const dummyOrigin = 'https://example.com'
+      const newRouterUrlObject = new URL(newRouterUrl, dummyOrigin)
+      const existingRouterUrlObject = new URL(routerUrl, dummyOrigin)
+
+      return fieldsRequiredByRoutingRules.some(fieldName => newRouterUrlObject.searchParams.get(fieldName) !== existingRouterUrlObject.searchParams.get(fieldName))
+    }
+    // Don't prerender if the complete data required by Router is not filled by user
+    if (cal && isRouterDataChanged() && isRouterDataAvailable()) {
+      setRouterUrl(newRouterUrl);
+      // We try to prerender the page with only that data that is needed by Routing Rules.
+      // If we include all the fields of the form here, then prerender is delayed and user won't benefit much with prerendering
+      cal('prerender', {
+        calLink: newRouterUrl,
+        type: "modal",
+        pageType: "team.event.booking.slots",
+      })
+    }
+  }
+
+  function onInputChangeComplete() {
+    prerender();
+  }
+
+  const handleSubmit = (event) => {
+    // You can submit the data to your server as well or to any other third party here
+    console.log(formData);
+    // Ensure that form doesn't redirect to the action and instead lets us show the embed
+    return event.preventDefault();
+  };
 
   return (
     <div style={{ width: "300px", margin: "auto" }}>
       <h2>Demo - Headless Router with User Form</h2>
-      <p>Schedule a demo</p>
-      <p>
-        On succesful form submission with 10-100 company size it routes to an
-        event booking page
-      </p>
-      <p>
-        Once that event is booked it redirects to a Custom
-        Url(https://cal.com/scheduling/feature/routing-forms) with a lot of
-        useful query parameters{" "}
-      </p>
+      <p>Schedule a demo - Uses prerendering</p>
+      <ul>
+        <li>companySize and email are the fields required by the routing rules and we have kept the at the top so that there are higher chances of user prefilling them first and prerendering would start then</li>
+        <li>On succesful form submission with 10-100 company size it selects a member</li>
+        <li>On succesful form submission with {'>'} 500 company size it selects a different member</li>
+      </ul>
+
       <form onSubmit={handleSubmit} method="GET">
+
+        <input
+          type="email"
+          name="email"
+          value={formData.email}
+          onChange={handleInputChange}
+          onBlur={onInputChangeComplete}
+          placeholder="Work email"
+          required
+        />
+
+        <select
+          name="companySize"
+          value={formData.companySize}
+          onChange={(e) => {
+            const newFormData = handleInputChange(e);
+            // There is no onBlur for select. Also, handleInputChange will update the formData in next render.
+            // So, we need to prerender by passing the data directly
+            prerender(newFormData);
+          }}
+          required
+        >
+          <option value="" disabled>
+            Company size
+          </option>
+          <option value="1-10">{"1-10"}</option>
+          <option value="10-100">10-100</option>
+          <option value="100-500">100-500</option>
+          <option value="> 500">{">500"}</option>
+        </select>
         <input
           type="text"
           name="firstName"
           value={formData.firstName}
           onChange={handleInputChange}
+          onBlur={onInputChangeComplete}
           placeholder="First Name"
           required
         />
@@ -106,16 +223,8 @@ const App = () => {
           name="lastName"
           value={formData.lastName}
           onChange={handleInputChange}
+          onBlur={onInputChangeComplete}
           placeholder="Last Name"
-          required
-        />
-
-        <input
-          type="email"
-          name="email"
-          value={formData.email}
-          onChange={handleInputChange}
-          placeholder="Work email"
           required
         />
 
@@ -124,25 +233,12 @@ const App = () => {
           name="phone"
           value={formData.phone}
           onChange={handleInputChange}
+          onBlur={onInputChangeComplete}
           placeholder="Phone"
           required
         />
-        <select
-          name="companySize"
-          value={formData.companySize}
-          onChange={handleInputChange}
-          required
-        >
-          <option value="" disabled>
-            Company size
-          </option>
-          <option value="< 10">{"1-10"}</option>
-          <option value="10-100">10-100</option>
-          <option value="100-500">100-500</option>
-          <option value="> 500">{">500"}</option>
-        </select>
-        {/* Use calOrigin of your organization e.g. https://acme.cal.com*/}
-        <EmbedCta calLink={calLink} calOrigin={calOrigin}>
+        {/* calLink routerUrl must have the data that was actually submitted by the user  */}
+        <EmbedCta cal={cal} calLink={buildRouterUrl(formData)} calOrigin={calOrigin}>
           Book a Demo
         </EmbedCta>
       </form>
