@@ -2,19 +2,25 @@ import "./App.css";
 import { useEffect } from "react";
 import { getCalApi } from "@calcom/embed-react";
 import React, { useState } from "react";
-const formId = "328d99d9-0a47-4bfc-99d2-a20d93ad1106"
-const calOrigin = "https://i.cal.qa"
-const embedJsUrl = "https://app.cal.qa/embed/embed.js"
+const formId = "8cfd7889-9043-4e20-9a09-db8e2c9f747c";
+const calOrigin = "https://i.cal.com";
+const embedJsUrl = "https://app.cal.com/embed/embed.js";
 
 function useCalApi() {
-  const [cal, setCal] = useState<any>(null);
+  const [calRegular, setCalRegular] = useState<any>(null);
+  const [calPrerender, setCalPrerender] = useState<any>(null);
   useEffect(() => {
     (async function () {
-      const cal = await getCalApi({ embedJsUrl, namespace: "headl" })
-      setCal(() => cal)
+      const calPrerender = await getCalApi({
+        namespace: "calcom-prerender",
+      });
+
+      const calRegular = await getCalApi();
+      setCalRegular(() => calRegular);
+      setCalPrerender(() => calPrerender);
     })();
   }, [embedJsUrl]);
-  return cal;
+  return { calPrerender, calRegular };
 }
 
 // This is same as you get from Embed Snippet Generator on Cal.com with the difference that it has props that can configure it from outside
@@ -29,10 +35,9 @@ const EmbedCta = ({
   calOrigin: string;
   children: React.ReactNode;
 }) => {
-
   return (
     <button
-      data-cal-namespace="headl"
+      data-cal-namespace="calcom-prerender"
       data-cal-link={calLink}
       data-cal-origin={calOrigin}
       // data-cal-origin="https://i.cal.com"
@@ -56,29 +61,29 @@ function useCalculateTimeTakenToShowBookingPage(cal: any) {
     function onConnectCompleted() {
       connectCompletedAt = Date.now();
       const connectionDuration = connectCompletedAt - connectStartedAt;
-      console.log('Time taken to show booking page: ', connectionDuration);
+      console.log("Time taken to show booking page: ", connectionDuration);
     }
 
     cal("on", {
-      action: "connectCompleted",
-      callback: onConnectCompleted
+      action: "__connectCompleted",
+      callback: onConnectCompleted,
     });
     cal("on", {
-      action: "connectInitiated",
-      callback: onConnectInitiated
+      action: "__connectInitiated",
+      callback: onConnectInitiated,
     });
 
     return () => {
       cal("off", {
         action: "__connectInitiated",
-        callback: onConnectInitiated
+        callback: onConnectInitiated,
       });
       cal("off", {
         action: "__connectCompleted",
-        callback: onConnectCompleted
+        callback: onConnectCompleted,
       });
-    }
-  }, [cal])
+    };
+  }, [cal]);
 }
 
 const App = () => {
@@ -88,7 +93,7 @@ const App = () => {
     email: string;
     phone: string;
     companySize: string;
-  }
+  };
   const [formData, setFormData] = useState<FormData>({
     firstName: "",
     lastName: "",
@@ -99,9 +104,8 @@ const App = () => {
 
   const [routerUrl, setRouterUrl] = useState("");
 
-
-  const cal = useCalApi()
-  useCalculateTimeTakenToShowBookingPage(cal)
+  const { calPrerender: cal } = useCalApi();
+  useCalculateTimeTakenToShowBookingPage(cal);
 
   const buildRouterUrl = (formData: FormData) => {
     const searchParams = new URLSearchParams();
@@ -116,43 +120,53 @@ const App = () => {
     // "companySize" is the identifier for the Company Size field in Routing Form
     // Encode if there are any special parameters e.g. companySize has 2000+ option where + is a special character
     searchParams.set("companySize", formData.companySize);
-
+    const pageSearchParams = new URL(document.URL).searchParams;
+    if (pageSearchParams.get("cal.isBookingDryRun") === "true") {
+      searchParams.set("cal.isBookingDryRun", "true");
+    }
     return `router?debug=true&form=${formId}&${searchParams.toString()}`;
-  }
+  };
 
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = event.target;
     const newFormData = { ...formData, [name]: value };
     setFormData(newFormData);
     return newFormData;
   };
 
-
   function prerender(newFormData?: FormData) {
     const formDataToUse = newFormData ?? formData;
     const newRouterUrl = buildRouterUrl(formDataToUse);
-    const fieldsRequiredByRoutingRules = ['email', 'companySize']
+    const fieldsRequiredByRoutingRules = ["email", "companySize"];
     const isRouterDataAvailable = () => {
-      return fieldsRequiredByRoutingRules.every(field => formDataToUse[field as keyof FormData])
-    }
+      return fieldsRequiredByRoutingRules.every(
+        (field) => formDataToUse[field as keyof FormData]
+      );
+    };
     const isRouterDataChanged = () => {
       // Needed by URL()
-      const dummyOrigin = 'https://example.com'
-      const newRouterUrlObject = new URL(newRouterUrl, dummyOrigin)
-      const existingRouterUrlObject = new URL(routerUrl, dummyOrigin)
+      const dummyOrigin = "https://example.com";
+      const newRouterUrlObject = new URL(newRouterUrl, dummyOrigin);
+      const existingRouterUrlObject = new URL(routerUrl, dummyOrigin);
 
-      return fieldsRequiredByRoutingRules.some(fieldName => newRouterUrlObject.searchParams.get(fieldName) !== existingRouterUrlObject.searchParams.get(fieldName))
-    }
+      return fieldsRequiredByRoutingRules.some(
+        (fieldName) =>
+          newRouterUrlObject.searchParams.get(fieldName) !==
+          existingRouterUrlObject.searchParams.get(fieldName)
+      );
+    };
     // Don't prerender if the complete data required by Router is not filled by user
     if (cal && isRouterDataChanged() && isRouterDataAvailable()) {
       setRouterUrl(newRouterUrl);
       // We try to prerender the page with only that data that is needed by Routing Rules.
       // If we include all the fields of the form here, then prerender is delayed and user won't benefit much with prerendering
-      cal('prerender', {
+      cal("prerender", {
         calLink: newRouterUrl,
         type: "modal",
         pageType: "team.event.booking.slots",
-      })
+      });
     }
   }
 
@@ -172,13 +186,17 @@ const App = () => {
       <h2>Demo - Headless Router with User Form</h2>
       <p>Schedule a demo - Uses prerendering</p>
       <ul>
-        <li>companySize and email are the fields required by the routing rules and we have kept the at the top so that there are higher chances of user prefilling them first and prerendering would start then</li>
-        <li>On succesful form submission with 10-100 company size it selects a member</li>
-        <li>On succesful form submission with {'>'} 500 company size it selects a different member</li>
+        <li>
+          companySize and email are the fields required by the routing rules and
+          we have kept the at the top so that there are higher chances of user
+          prefilling them first and prerendering would start then
+        </li>
+        <li>1-10 company size is assigned to Hariom</li>
+        <li>{">"} 500 company size is assigned to Joe</li>
+        <li>test@test1.com email is owned by Joe in salesforce</li>
       </ul>
 
       <form onSubmit={handleSubmit} method="GET">
-
         <input
           type="email"
           name="email"
@@ -238,7 +256,11 @@ const App = () => {
           required
         />
         {/* calLink routerUrl must have the data that was actually submitted by the user  */}
-        <EmbedCta cal={cal} calLink={buildRouterUrl(formData)} calOrigin={calOrigin}>
+        <EmbedCta
+          cal={cal}
+          calLink={buildRouterUrl(formData)}
+          calOrigin={calOrigin}
+        >
           Book a Demo
         </EmbedCta>
       </form>
