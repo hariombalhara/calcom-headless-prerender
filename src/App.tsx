@@ -107,24 +107,27 @@ const App = () => {
   const { calPrerender: cal } = useCalApi();
   useCalculateTimeTakenToShowBookingPage(cal);
 
-  const buildRouterUrl = (formData: FormData) => {
+  const buildRouterUrl = (formData: FormData, params: string[]) => {
     const searchParams = new URLSearchParams();
+    params.forEach((param) => {
+      searchParams.set(param, formData[param as keyof FormData]);
+    });
 
-    // "firstName" and "lastName" are the identifier for the name field in Routing Form
-    searchParams.set("firstName", formData.firstName);
-    searchParams.set("lastName", formData.lastName);
-    searchParams.set("phone", formData.phone);
+    return `router?form=${formId}&${searchParams.toString()}`;
+  };
 
-    // "email" is the identifier for the email field in Routing Form
-    searchParams.set("email", formData.email);
-    // "companySize" is the identifier for the Company Size field in Routing Form
-    // Encode if there are any special parameters e.g. companySize has 2000+ option where + is a special character
-    searchParams.set("companySize", formData.companySize);
-    const pageSearchParams = new URL(document.URL).searchParams;
-    if (pageSearchParams.get("cal.isBookingDryRun") === "true") {
-      searchParams.set("cal.isBookingDryRun", "true");
-    }
-    return `router?debug=true&form=${formId}&${searchParams.toString()}`;
+  const buildPrerenderUrl = (formData: FormData) => {
+    return buildRouterUrl(formData, ["email", "companySize"]);
+  };
+
+  const buildCtaClickUrl = (formData: FormData) => {
+    return buildRouterUrl(formData, [
+      "email",
+      "companySize",
+      "firstName",
+      "lastName",
+      "phone",
+    ]);
   };
 
   const handleInputChange = (
@@ -138,7 +141,7 @@ const App = () => {
 
   function prerender(newFormData?: FormData) {
     const formDataToUse = newFormData ?? formData;
-    const newRouterUrl = buildRouterUrl(formDataToUse);
+    const newRouterUrl = buildPrerenderUrl(formDataToUse);
     const fieldsRequiredByRoutingRules = ["email", "companySize"];
     const isRouterDataAvailable = () => {
       return fieldsRequiredByRoutingRules.every(
@@ -160,12 +163,18 @@ const App = () => {
     // Don't prerender if the complete data required by Router is not filled by user
     if (cal && isRouterDataChanged() && isRouterDataAvailable()) {
       setRouterUrl(newRouterUrl);
+      const pageSearchParams = new URL(document.URL).searchParams;
       // We try to prerender the page with only that data that is needed by Routing Rules.
       // If we include all the fields of the form here, then prerender is delayed and user won't benefit much with prerendering
       cal("prerender", {
         calLink: newRouterUrl,
         type: "modal",
+        calOrigin,
         pageType: "team.event.booking.slots",
+        options: {
+          backgroundSlotsFetch:
+            pageSearchParams.get("backgroundSlotsFetch") === "true",
+        },
       });
     }
   }
@@ -182,18 +191,33 @@ const App = () => {
   };
 
   return (
-    <div style={{ width: "300px", margin: "auto" }}>
+    <>
       <h2>Demo - Headless Router with User Form</h2>
       <p>Schedule a demo - Uses prerendering</p>
-      <ul>
+      <span
+        style={{ display: "flex", justifyContent: "space-around", gap: "2px" }}
+      >
+        <a href="?backgroundSlotsFetch=true&cal.embed.logging=1">
+          Background Slots Fetch
+        </a>
+        <a href="?backgroundSlotsFetch=false&cal.embed.logging=1">
+          No Background Slots Fetch
+        </a>
+      </span>
+      <ul style={{ textAlign: "left" }}>
         <li>
           companySize and email are the fields required by the routing rules and
           we have kept the at the top so that there are higher chances of user
           prefilling them first and prerendering would start then
         </li>
-        <li>1-10 company size is assigned to Hariom</li>
-        <li>{">"} 500 company size is assigned to Joe</li>
-        <li>test@test1.com email is owned by Joe in salesforce</li>
+        <li>
+          On succesful form submission with 10-100 company size it selects a
+          member
+        </li>
+        <li>
+          On succesful form submission with {">"} 500 company size it selects a
+          different member
+        </li>
       </ul>
 
       <form onSubmit={handleSubmit} method="GET">
@@ -258,13 +282,13 @@ const App = () => {
         {/* calLink routerUrl must have the data that was actually submitted by the user  */}
         <EmbedCta
           cal={cal}
-          calLink={buildRouterUrl(formData)}
+          calLink={buildCtaClickUrl(formData)}
           calOrigin={calOrigin}
         >
           Book a Demo
         </EmbedCta>
       </form>
-    </div>
+    </>
   );
 };
 
