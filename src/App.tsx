@@ -2,16 +2,16 @@ import "./App.css";
 import { useEffect } from "react";
 import { getCalApi } from "@calcom/embed-react";
 import React, { useState } from "react";
-const formId = "ba352208-10fa-4122-93ad-05b8da5bbec4"
-const calOrigin = "http://acme.cal.remote:3000"
-const embedJsUrl = "http://app.cal.remote:3000/embed/embed.js"
+const formId = "ba352208-10fa-4122-93ad-05b8da5bbec4";
+const calOrigin = "http://acme.cal.remote:3000";
+const embedJsUrl = "http://app.cal.remote:3000/embed/embed.js";
 
 function useCalApi() {
   const [cal, setCal] = useState<any>(null);
   useEffect(() => {
     (async function () {
-      const cal = await getCalApi({ embedJsUrl, namespace: "headl" })
-      setCal(() => cal)
+      const cal = await getCalApi({ embedJsUrl, namespace: "headl" });
+      setCal(() => cal);
     })();
   }, [embedJsUrl]);
   return cal;
@@ -29,7 +29,6 @@ const EmbedCta = ({
   calOrigin: string;
   children: React.ReactNode;
 }) => {
-
   return (
     <button
       data-cal-namespace="headl"
@@ -56,29 +55,29 @@ function useCalculateTimeTakenToShowBookingPage(cal: any) {
     function onConnectCompleted() {
       connectCompletedAt = Date.now();
       const connectionDuration = connectCompletedAt - connectStartedAt;
-      console.log('Time taken to show booking page: ', connectionDuration);
+      console.log("Time taken to show booking page: ", connectionDuration);
     }
 
     cal("on", {
       action: "__connectCompleted",
-      callback: onConnectCompleted
+      callback: onConnectCompleted,
     });
     cal("on", {
       action: "__connectInitiated",
-      callback: onConnectInitiated
+      callback: onConnectInitiated,
     });
 
     return () => {
       cal("off", {
         action: "__connectInitiated",
-        callback: onConnectInitiated
+        callback: onConnectInitiated,
       });
       cal("off", {
         action: "__connectCompleted",
-        callback: onConnectCompleted
+        callback: onConnectCompleted,
       });
-    }
-  }, [cal])
+    };
+  }, [cal]);
 }
 
 const App = () => {
@@ -88,7 +87,7 @@ const App = () => {
     email: string;
     phone: string;
     companySize: string;
-  }
+  };
   const [formData, setFormData] = useState<FormData>({
     firstName: "",
     lastName: "",
@@ -99,65 +98,79 @@ const App = () => {
 
   const [routerUrl, setRouterUrl] = useState("");
 
-
-  const cal = useCalApi()
-  useCalculateTimeTakenToShowBookingPage(cal)
+  const cal = useCalApi();
+  useCalculateTimeTakenToShowBookingPage(cal);
 
   const buildRouterUrl = (formData: FormData, params: string[]) => {
     const searchParams = new URLSearchParams();
-    params.forEach(param => {
+    params.forEach((param) => {
       searchParams.set(param, formData[param as keyof FormData]);
     });
 
     return `router?form=${formId}&${searchParams.toString()}`;
-  }
+  };
 
   const buildPrerenderUrl = (formData: FormData) => {
-    return buildRouterUrl(formData, ['email', 'companySize']);
-  }
+    return buildRouterUrl(formData, ["email", "companySize"]);
+  };
 
   const buildCtaClickUrl = (formData: FormData) => {
-    return buildRouterUrl(formData, ['email', 'companySize', 'firstName', 'lastName', 'phone']);
-  }
+    return buildRouterUrl(formData, [
+      "email",
+      "companySize",
+      "firstName",
+      "lastName",
+      "phone",
+    ]);
+  };
 
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = event.target;
     const newFormData = { ...formData, [name]: value };
     setFormData(newFormData);
     return newFormData;
   };
 
-
   function prerender(newFormData?: FormData) {
     const formDataToUse = newFormData ?? formData;
     const newRouterUrl = buildPrerenderUrl(formDataToUse);
-    const fieldsRequiredByRoutingRules = ['email', 'companySize']
+    const fieldsRequiredByRoutingRules = ["email", "companySize"];
     const isRouterDataAvailable = () => {
-      return fieldsRequiredByRoutingRules.every(field => formDataToUse[field as keyof FormData])
-    }
+      return fieldsRequiredByRoutingRules.every(
+        (field) => formDataToUse[field as keyof FormData]
+      );
+    };
     const isRouterDataChanged = () => {
       // Needed by URL()
-      const dummyOrigin = 'https://example.com'
-      const newRouterUrlObject = new URL(newRouterUrl, dummyOrigin)
-      const existingRouterUrlObject = new URL(routerUrl, dummyOrigin)
+      const dummyOrigin = "https://example.com";
+      const newRouterUrlObject = new URL(newRouterUrl, dummyOrigin);
+      const existingRouterUrlObject = new URL(routerUrl, dummyOrigin);
 
-      return fieldsRequiredByRoutingRules.some(fieldName => newRouterUrlObject.searchParams.get(fieldName) !== existingRouterUrlObject.searchParams.get(fieldName))
-    }
+      return fieldsRequiredByRoutingRules.some(
+        (fieldName) =>
+          newRouterUrlObject.searchParams.get(fieldName) !==
+          existingRouterUrlObject.searchParams.get(fieldName)
+      );
+    };
     // Don't prerender if the complete data required by Router is not filled by user
     if (cal && isRouterDataChanged() && isRouterDataAvailable()) {
+      // Update Router URL to compare with the new URL and detect if we need to re-prerender
       setRouterUrl(newRouterUrl);
       const pageSearchParams = new URL(document.URL).searchParams;
       // We try to prerender the page with only that data that is needed by Routing Rules.
       // If we include all the fields of the form here, then prerender is delayed and user won't benefit much with prerendering
-      cal('prerender', {
+      cal("prerender", {
         calLink: newRouterUrl,
         type: "modal",
         calOrigin,
         pageType: "team.event.booking.slots",
         options: {
-          backgroundSlotsFetch: pageSearchParams.get("backgroundSlotsFetch") === "true"
-        }
-      })
+          backgroundSlotsFetch:
+            pageSearchParams.get("backgroundSlotsFetch") === "true",
+        },
+      });
     }
   }
 
@@ -176,18 +189,33 @@ const App = () => {
     <>
       <h2>Demo - Headless Router with User Form</h2>
       <p>Schedule a demo - Uses prerendering</p>
-      <span style={{ display: "flex", justifyContent: "space-around", gap: "2px" }}>
-        <a href="?backgroundSlotsFetch=true&cal.embed.logging=1">Background Slots Fetch</a>
-        <a href="?backgroundSlotsFetch=false&cal.embed.logging=1">No Background Slots Fetch</a>
+      <span
+        style={{ display: "flex", justifyContent: "space-around", gap: "2px" }}
+      >
+        <a href="?backgroundSlotsFetch=true&cal.embed.logging=1">
+          Background Slots Fetch
+        </a>
+        <a href="?backgroundSlotsFetch=false&cal.embed.logging=1">
+          No Background Slots Fetch
+        </a>
       </span>
       <ul style={{ textAlign: "left" }}>
-        <li>companySize and email are the fields required by the routing rules and we have kept the at the top so that there are higher chances of user prefilling them first and prerendering would start then</li>
-        <li>On succesful form submission with 10-100 company size it selects a member</li>
-        <li>On succesful form submission with {'>'} 500 company size it selects a different member</li>
+        <li>
+          companySize and email are the fields required by the routing rules and
+          we have kept the at the top so that there are higher chances of user
+          prefilling them first and prerendering would start then
+        </li>
+        <li>
+          On succesful form submission with 10-100 company size it selects a
+          member
+        </li>
+        <li>
+          On succesful form submission with {">"} 500 company size it selects a
+          different member
+        </li>
       </ul>
 
       <form onSubmit={handleSubmit} method="GET">
-
         <input
           type="email"
           name="email"
@@ -247,7 +275,11 @@ const App = () => {
           required
         />
         {/* calLink routerUrl must have the data that was actually submitted by the user  */}
-        <EmbedCta cal={cal} calLink={buildCtaClickUrl(formData)} calOrigin={calOrigin}>
+        <EmbedCta
+          cal={cal}
+          calLink={buildCtaClickUrl(formData)}
+          calOrigin={calOrigin}
+        >
           Book a Demo
         </EmbedCta>
       </form>
