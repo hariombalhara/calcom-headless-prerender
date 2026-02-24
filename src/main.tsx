@@ -1,15 +1,25 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import App from "./App";
 import AllRoutingDataInParams from "./AllRoutingDataInParams";
 import "./index.css";
 
+const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) => {
+  const { pathname } = useLocation();
+  const isActive = pathname === to;
+  return (
+    <Link to={to} className={`nav-link${isActive ? " nav-link--active" : ""}`}>
+      {children}
+    </Link>
+  );
+};
+
 const Layout = () => (
   <>
-    <nav style={{ padding: "0.75rem 1.5rem", borderBottom: "1px solid #e5e7eb", display: "flex", gap: "1.5rem", fontSize: "0.875rem" }}>
-      <Link to="/">Home (Form-based prerender)</Link>
-      <Link to="/all-routing-data-in-params">All Routing Data in Params</Link>
+    <nav className="top-nav">
+      <NavLink to="/">Home (Form-based prerender)</NavLink>
+      <NavLink to="/all-routing-data-in-params">All Routing Data in Params</NavLink>
     </nav>
     <Routes>
       <Route path="/" element={

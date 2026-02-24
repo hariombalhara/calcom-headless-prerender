@@ -43,6 +43,7 @@ let connectStartedAt = 0;
 let connectCompletedAt = 0;
 
 function useCalculateTimeTakenToShowBookingPage(cal: any) {
+
   useEffect(() => {
     if (!cal) return;
 
@@ -78,6 +79,34 @@ function useCalculateTimeTakenToShowBookingPage(cal: any) {
   }, [cal]);
 }
 
+// ── Feature rollout ──────────────────────────────────────────────────────────
+// Prerendering creates hidden iframes ahead of time, which increases server
+// load. When rolling out prerender on a new page for the first time, start with
+// a low percentage (default 20%) and ramp up gradually to avoid overwhelming
+// the servers. This also gives you an easy kill-switch: set prerenderRollout=0
+// in the URL (or your config layer) to instantly disable prerendering for all
+// users if anything goes wrong.
+//
+// URL params:
+//   prerenderRollout=0..100  – percentage of users that get prerendering (default 20)
+//   prerenderForce=true      – always prerender, ignoring the rollout bucket
+function isInPrerenderRollout(): boolean {
+  const searchParams = new URLSearchParams(window.location.search);
+  if (searchParams.get("prerenderForce") === "true") return true;
+  const rolloutPercent = Math.min(
+    100,
+    Math.max(0, parseInt(searchParams.get("prerenderRollout") ?? "20"))
+  );
+  // Stable per-user random bucket (0–99) persisted in localStorage so the same
+  // user always lands in the same rollout group across page loads.
+  let bucket = parseInt(localStorage.getItem("_cal_prerender_bucket") ?? "");
+  if (isNaN(bucket)) {
+    bucket = Math.floor(Math.random() * 100);
+    localStorage.setItem("_cal_prerender_bucket", String(bucket));
+  }
+  return bucket < rolloutPercent;
+}
+
 const App = () => {
   type FormData = {
     firstName: string;
@@ -95,8 +124,11 @@ const App = () => {
   });
 
   const [routerUrl, setRouterUrl] = useState("");
+  const [prerenderActive, setPrerenderActive] = useState(false);
+  // Computed once on mount — same user always gets the same rollout decision.
+  const [inRollout] = useState(() => isInPrerenderRollout());
 
-  const { formId, calOrigin, embedJsUrl } = useQueryParams();
+  const { formId, calOrigin, embedJsUrl, backgroundSlotsFetch } = useQueryParams();
   const cal = useCalApi(embedJsUrl);
   useCalculateTimeTakenToShowBookingPage(cal);
 
@@ -149,6 +181,7 @@ const App = () => {
   };
 
   function prerender(newFormData?: FormData) {
+    if (!inRollout) return;
     const formDataToUse = newFormData ?? formData;
     const newRouterUrl = buildPrerenderUrl(formDataToUse);
     const fieldsRequiredByRoutingRules = ["email", "companySize"];
@@ -173,7 +206,6 @@ const App = () => {
     if (cal && isRouterDataChanged() && isRouterDataAvailable()) {
       // Update Router URL to compare with the new URL and detect if we need to re-prerender
       setRouterUrl(newRouterUrl);
-      const pageSearchParams = new URL(document.URL).searchParams;
       // We try to prerender the page with only that data that is needed by Routing Rules.
       // If we include all the fields of the form here, then prerender is delayed and user won't benefit much with prerendering
       cal("prerender", {
@@ -182,10 +214,10 @@ const App = () => {
         calOrigin,
         pageType: "team.event.booking.slots",
         options: {
-          backgroundSlotsFetch:
-            pageSearchParams.get("backgroundSlotsFetch") === "true",
+          backgroundSlotsFetch,
         },
       });
+      setPrerenderActive(true);
     }
   }
 
@@ -217,7 +249,24 @@ const App = () => {
             </a>
           );
         })}
+        {(() => {
+          const params = new URLSearchParams(window.location.search);
+          params.set("prerenderForce", "true");
+          return (
+            <a href={`?${params.toString()}`}>
+              Force Prerender (rollout override)
+            </a>
+          );
+        })()}
       </span>
+      <p style={{ fontSize: "0.85rem", color: inRollout ? "green" : "gray", margin: "4px 0" }}>
+        Prerender rollout:{" "}
+        {inRollout
+          ? prerenderActive
+            ? "In rollout — prerendering active"
+            : "In rollout — waiting for routing fields"
+          : "Not in rollout — add ?prerenderForce=true to override"}
+      </p>
       <ul style={{ textAlign: "left" }}>
         <li>
           companySize and email are the fields required by the routing rules and
