@@ -2,11 +2,16 @@ import "./App.css";
 import { useEffect } from "react";
 import { getCalApi } from "@calcom/embed-react";
 import React, { useState } from "react";
-const formId = "ba352208-10fa-4122-93ad-05b8da5bbec4";
-const calOrigin = "http://acme.cal.remote:3000";
-const embedJsUrl = "http://app.cal.remote:3000/embed/embed.js";
+function useQueryParams() {
+  const searchParams = new URLSearchParams(window.location.search);
+  return {
+    formId: searchParams.get("formId"),
+    calOrigin: searchParams.get("calOrigin") ?? "https://app.cal.com",
+    embedJsUrl: searchParams.get("embedJsUrl") ?? "https://app.cal.com/embed.js",
+  };
+}
 
-function useCalApi() {
+function useCalApi(embedJsUrl: string) {
   const [cal, setCal] = useState<any>(null);
   useEffect(() => {
     (async function () {
@@ -98,8 +103,25 @@ const App = () => {
 
   const [routerUrl, setRouterUrl] = useState("");
 
-  const cal = useCalApi();
+  const { formId, calOrigin, embedJsUrl } = useQueryParams();
+  const cal = useCalApi(embedJsUrl);
   useCalculateTimeTakenToShowBookingPage(cal);
+
+  if (!formId) {
+    return (
+      <div style={{ color: "red", padding: "1rem" }}>
+        Error: <code>formId</code> query parameter is required. Please provide it in the URL, e.g. <code>?formId=YOUR_FORM_ID</code>
+      </div>
+    );
+  }
+
+  if (!/^https?:\/\//.test(calOrigin)) {
+    return (
+      <div style={{ color: "red", padding: "1rem" }}>
+        Error: <code>calOrigin</code> must start with <code>http://</code> or <code>https://</code>. Got: <code>{calOrigin}</code>
+      </div>
+    );
+  }
 
   const buildRouterUrl = (formData: FormData, params: string[]) => {
     const searchParams = new URLSearchParams();
@@ -192,12 +214,16 @@ const App = () => {
       <span
         style={{ display: "flex", justifyContent: "space-around", gap: "2px" }}
       >
-        <a href="?backgroundSlotsFetch=true&cal.embed.logging=1">
-          Background Slots Fetch
-        </a>
-        <a href="?backgroundSlotsFetch=false&cal.embed.logging=1">
-          No Background Slots Fetch
-        </a>
+        {(["true", "false"] as const).map((value) => {
+          const params = new URLSearchParams(window.location.search);
+          params.set("backgroundSlotsFetch", value);
+          params.set("cal.embed.logging", "1");
+          return (
+            <a key={value} href={`?${params.toString()}`}>
+              {value === "true" ? "Background Slots Fetch" : "No Background Slots Fetch"}
+            </a>
+          );
+        })}
       </span>
       <ul style={{ textAlign: "left" }}>
         <li>

@@ -22,7 +22,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <li>
         Keep calling the <code>prerender</code> instruction whenever any of
         those routing fields change. MUST AVOID CALLING PRERENDER ON EVERY
-        CHARACTER CHANGE
+        CHARACTER CHANGE, as that sends too many requests to the server. Instead ensure that you use focus out event to assume that the field is filled
       </li>
     </ul>
   </React.StrictMode>
