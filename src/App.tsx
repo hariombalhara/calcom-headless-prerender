@@ -2,14 +2,7 @@ import "./App.css";
 import { useEffect } from "react";
 import { getCalApi } from "@calcom/embed-react";
 import React, { useState } from "react";
-function useQueryParams() {
-  const searchParams = new URLSearchParams(window.location.search);
-  return {
-    formId: searchParams.get("formId"),
-    calOrigin: searchParams.get("calOrigin") ?? "https://app.cal.com",
-    embedJsUrl: searchParams.get("embedJsUrl") ?? "https://app.cal.com/embed.js",
-  };
-}
+import { useQueryParams } from "./hooks/useQueryParams";
 
 function useCalApi(embedJsUrl: string) {
   const [cal, setCal] = useState<any>(null);
